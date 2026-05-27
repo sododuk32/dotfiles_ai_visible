@@ -1,0 +1,19 @@
+# 개인 사용량 데이터 (절대 커밋 금지)
+tools/ccusage-graphs/data/
+tools/ccusage-graphs/*.db
+*.db
+
+# Claude 로그 (민감 정보 포함 가능)
+.claude/hooks/prompt_log.jsonl
+
+# 백업 파일
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 에디터
+.vscode/settings.json
+.idea/

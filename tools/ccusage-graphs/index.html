@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #0d1117; color: #e6edf3; min-height: 100vh; padding: 24px; }
+  h1  { font-size: 1.4rem; font-weight: 600; margin-bottom: 24px; color: #f0f6fc; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; }
+  .card .label { font-size: 0.75rem; color: #8b949e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+  .card .value { font-size: 1.8rem; font-weight: 700; color: #f0f6fc; }
+  .card .sub   { font-size: 0.8rem; color: #8b949e; margin-top: 4px; }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  .chart-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; }
+  .chart-card h2 { font-size: 0.9rem; color: #8b949e; margin-bottom: 16px; }
+  .chart-card canvas { max-height: 220px; }
+  .table-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; }
+  .table-card h2 { font-size: 0.9rem; color: #8b949e; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; color: #8b949e; padding: 8px 12px; border-bottom: 1px solid #21262d; font-weight: 500; }
+  td { padding: 8px 12px; border-bottom: 1px solid #21262d; color: #e6edf3; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1c2128; }
+  .empty { color: #8b949e; font-size: 0.85rem; padding: 20px 0; text-align: center; }
+  .refresh-info { font-size: 0.75rem; color: #8b949e; margin-top: 24px; }
+  @media (max-width: 700px) { .charts { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>⚡ Claude Code Dashboard</h1>
+
+<!-- 요약 카드 -->
+<div class="grid">
+  <div class="card">
+    <div class="label">이번 달 비용 (추정)</div>
+    <div class="value" id="totalCost">—</div>
+    <div class="sub">API 요금 기준</div>
+  </div>
+  <div class="card">
+    <div class="label">이번 달 토큰</div>
+    <div class="value" id="totalTokens">—</div>
+    <div class="sub">input + output</div>
+  </div>
+  <div class="card">
+    <div class="label">활성 프로젝트</div>
+    <div class="value" id="activeProjects">—</div>
+    <div class="sub">이번 달</div>
+  </div>
+  <div class="card">
+    <div class="label">총 세션</div>
+    <div class="value" id="totalSessions">—</div>
+    <div class="sub">이번 달</div>
+  </div>
+</div>
+
+<!-- 차트 -->
+<div class="charts">
+  <div class="chart-card">
+    <h2>일별 토큰 사용량</h2>
+    <canvas id="tokenChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h2>일별 비용 (USD)</h2>
+    <canvas id="costChart"></canvas>
+  </div>
+</div>
+
+<!-- 세션 테이블 -->
+<div class="table-card">
+  <h2>최근 세션</h2>
+  <div id="sessionTable"><div class="empty">데이터 없음 — refresh.ps1을 실행하세요</div></div>
+</div>
+
+<div class="refresh-info">마지막 갱신: <span id="lastUpdated">—</span> · 갱신: <code>cd ~/claude-dashboard && ./refresh.ps1 -Open</code></div>
+
+<script>
+// ── 데이터 로드 ───────────────────────────────────────────────
+async function loadData() {
+  let daily = null, sessions = null;
+
+  try {
+    const r = await fetch('data/export.json');
+    if (r.ok) daily = await r.json();
+  } catch {}
+
+  try {
+    const r = await fetch('data/export_sessions.json');
+    if (r.ok) sessions = await r.json();
+  } catch {}
+
+  return { daily, sessions };
+}
+
+// ── 숫자 포맷 ─────────────────────────────────────────────────
+function fmtCost(v)   { return v != null ? '$' + Number(v).toFixed(2) : '—'; }
+function fmtTokens(v) {
+  if (v == null) return '—';
+  if (v >= 1e6) return (v/1e6).toFixed(1) + 'M';
+  if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
+  return String(v);
+}
+
+// ── 차트 공통 옵션 ────────────────────────────────────────────
+const chartOpts = (label, color) => ({
+  type: 'bar',
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+    },
+  },
+  data: { labels: [], datasets: [{ label, data: [], backgroundColor: color, borderRadius: 4 }] }
+});
+
+// ── 렌더링 ───────────────────────────────────────────────────
+async function render() {
+  const { daily, sessions } = await loadData();
+
+  // 일별 데이터
+  if (daily && Array.isArray(daily) && daily.length > 0) {
+    const rows   = daily.slice(-30);
+    const labels = rows.map(r => r.date?.slice(5) ?? '');
+    const tokens = rows.map(r => (r.input_tokens ?? 0) + (r.output_tokens ?? 0));
+    const costs  = rows.map(r => r.cost ?? 0);
+
+    // 이번 달 합계
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const monthRows = daily.filter(r => (r.date ?? '').startsWith(monthStr));
+    const monthTokens = monthRows.reduce((s,r) => s + (r.input_tokens??0) + (r.output_tokens??0), 0);
+    const monthCost   = monthRows.reduce((s,r) => s + (r.cost??0), 0);
+    const projects    = new Set(monthRows.map(r => r.project).filter(Boolean)).size;
+
+    document.getElementById('totalCost').textContent    = fmtCost(monthCost);
+    document.getElementById('totalTokens').textContent  = fmtTokens(monthTokens);
+    document.getElementById('activeProjects').textContent = projects || '—';
+
+    // 토큰 차트
+    const tCtx = document.getElementById('tokenChart').getContext('2d');
+    const tCfg = chartOpts('토큰', '#388bfd');
+    tCfg.data.labels = labels;
+    tCfg.data.datasets[0].data = tokens;
+    new Chart(tCtx, tCfg);
+
+    // 비용 차트
+    const cCtx = document.getElementById('costChart').getContext('2d');
+    const cCfg = chartOpts('비용(USD)', '#3fb950');
+    cCfg.data.labels = labels;
+    cCfg.data.datasets[0].data = costs.map(v => v.toFixed(4));
+    new Chart(cCtx, cCfg);
+  }
+
+  // 세션 테이블
+  if (sessions && Array.isArray(sessions) && sessions.length > 0) {
+    const recent = sessions.slice(-20).reverse();
+    document.getElementById('totalSessions').textContent = sessions.length;
+
+    const rows = recent.map(s => `
+      <tr>
+        <td>${s.date ?? s.start_time?.slice(0,10) ?? '—'}</td>
+        <td style="color:#8b949e;font-size:.8rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${s.project ?? s.session_id?.slice(0,20) ?? '—'}
+        </td>
+        <td>${fmtTokens((s.input_tokens??0)+(s.output_tokens??0))}</td>
+        <td style="color:#3fb950">${fmtCost(s.cost)}</td>
+      </tr>`).join('');
+
+    document.getElementById('sessionTable').innerHTML = `
+      <table>
+        <thead><tr><th>날짜</th><th>프로젝트/세션</th><th>토큰</th><th>비용</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  document.getElementById('lastUpdated').textContent = new Date().toLocaleString('ko-KR');
+}
+
+render();
+</script>
+</body>
+</html>
