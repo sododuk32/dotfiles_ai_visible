@@ -69,6 +69,58 @@ dotfiles/
         └── data/                # ← .gitignore됨 (개인 데이터)
 ```
 
+---
+
+## 터미널 환경 — Windows Terminal
+
+### 설치 확인
+Windows 11은 기본 내장. 없으면:
+```powershell
+winget install Microsoft.WindowsTerminal
+```
+시작 메뉴에서 **"Terminal"** 검색 → PowerShell로 열리면 정상.
+
+### 창 분할
+
+단축키가 버전마다 달라서 **커맨드 팔레트**가 가장 확실:
+
+```
+Ctrl+Shift+P  →  "split" 입력
+```
+
+| 항목 | 동작 |
+|---|---|
+| Split pane right | 좌우 분할 |
+| Split pane down | 상하 분할 |
+| Duplicate pane | 현재 창 복제 |
+
+분할 후 창 이동: `Alt+방향키`  
+분할 창 닫기: `Ctrl+Shift+W`
+
+### 추천 레이아웃
+
+Claude Code 작업 시:
+```
+┌──────────────────────┬─────────────────────┐
+│ Claude Code 작업     │ kanban 대시보드      │
+│ (메인 터미널)        │ npx claude-code-     │
+│                      │ kanban --open        │
+├──────────────────────┴─────────────────────┤
+│ ccusage daily / 로그 확인                  │
+└────────────────────────────────────────────┘
+```
+
+### 탭 관리
+
+| 단축키 | 동작 |
+|---|---|
+| `Ctrl+Shift+T` | 새 탭 |
+| `Ctrl+Tab` | 다음 탭 |
+| `Ctrl+Shift+Tab` | 이전 탭 |
+| 탭 우클릭 | 탭 이름 변경 |
+
+---
+
 ## 업데이트
 
 환경이 바뀌면 dotfiles 수정 후:
